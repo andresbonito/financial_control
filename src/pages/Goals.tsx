@@ -236,7 +236,7 @@ export function Goals() {
             placeholder="Descreva o objetivo..."
             {...register('description')}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Valor alvo (R$)"
               placeholder="0,00"
@@ -249,7 +249,7 @@ export function Goals() {
               {...register('current_amount')}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Prazo (opcional)"
               type="date"

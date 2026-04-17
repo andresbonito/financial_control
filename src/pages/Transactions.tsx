@@ -156,7 +156,7 @@ export function Transactions() {
       action={<Button onClick={openAdd} icon={<Plus className="w-4 h-4" />}>Nova transação</Button>}
     >
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Card className="p-4">
           <p className="text-xs text-slate-400 mb-1">Receitas</p>
           <p className="text-xl font-bold text-green-400">{formatCurrency(totalIncome)}</p>
@@ -270,7 +270,7 @@ export function Transactions() {
             error={errors.type?.message}
             {...register('type', { required: 'Obrigatório' })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Valor (R$)"
               placeholder="0,00"

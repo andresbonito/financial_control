@@ -177,42 +177,44 @@ export function Investments() {
               <Button size="sm" onClick={openAdd} icon={<Plus className="w-3.5 h-3.5" />}>Adicionar</Button>
             </div>
           ) : (
-            <div className="divide-y divide-slate-700">
-              {/* Header */}
-              <div className="grid grid-cols-5 px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                <span className="col-span-2">Nome</span>
-                <span>Investido</span>
-                <span>Atual</span>
-                <span>Retorno</span>
-              </div>
-              {investments.map((inv) => {
-                const current = inv.current_value ?? inv.invested_amount
-                const ret = current - inv.invested_amount
-                const retPct = inv.invested_amount > 0 ? (ret / inv.invested_amount) * 100 : 0
-                return (
-                  <div key={inv.id} className="grid grid-cols-5 items-center px-4 py-3 hover:bg-slate-700/30 transition-colors">
-                    <div className="col-span-2">
-                      <p className="text-sm font-medium text-slate-100">{inv.name}</p>
-                      <p className="text-xs text-slate-500">{inv.type}{inv.broker ? ` · ${inv.broker}` : ''}</p>
-                    </div>
-                    <span className="text-sm text-slate-300">{formatCurrency(inv.invested_amount)}</span>
-                    <span className="text-sm text-slate-300">{formatCurrency(current)}</span>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm font-medium ${ret >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {ret >= 0 ? '+' : ''}{retPct.toFixed(1)}%
-                      </span>
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(inv)} className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-100 transition-colors">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => deleteInvestment(inv.id)} className="p-1.5 hover:bg-red-500/20 rounded text-slate-400 hover:text-red-400 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+            <div className="overflow-x-auto">
+              <div className="min-w-[480px] divide-y divide-slate-700">
+                {/* Header */}
+                <div className="grid grid-cols-5 px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <span className="col-span-2">Nome</span>
+                  <span>Investido</span>
+                  <span>Atual</span>
+                  <span>Retorno</span>
+                </div>
+                {investments.map((inv) => {
+                  const current = inv.current_value ?? inv.invested_amount
+                  const ret = current - inv.invested_amount
+                  const retPct = inv.invested_amount > 0 ? (ret / inv.invested_amount) * 100 : 0
+                  return (
+                    <div key={inv.id} className="grid grid-cols-5 items-center px-4 py-3 hover:bg-slate-700/30 transition-colors">
+                      <div className="col-span-2">
+                        <p className="text-sm font-medium text-slate-100">{inv.name}</p>
+                        <p className="text-xs text-slate-500">{inv.type}{inv.broker ? ` · ${inv.broker}` : ''}</p>
+                      </div>
+                      <span className="text-sm text-slate-300">{formatCurrency(inv.invested_amount)}</span>
+                      <span className="text-sm text-slate-300">{formatCurrency(current)}</span>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-medium ${ret >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {ret >= 0 ? '+' : ''}{retPct.toFixed(1)}%
+                        </span>
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(inv)} className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-100 transition-colors">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => deleteInvestment(inv.id)} className="p-1.5 hover:bg-red-500/20 rounded text-slate-400 hover:text-red-400 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           )}
         </Card>
@@ -227,7 +229,7 @@ export function Investments() {
             error={errors.name?.message}
             {...register('name', { required: 'Obrigatório' })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Tipo"
               options={TYPE_OPTIONS}
@@ -241,7 +243,7 @@ export function Investments() {
               {...register('date', { required: 'Obrigatório' })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Valor investido (R$)"
               placeholder="0,00"

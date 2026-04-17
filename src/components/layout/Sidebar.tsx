@@ -8,6 +8,7 @@ import {
   Sparkles,
   LogOut,
   Wallet,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -20,31 +21,52 @@ const navItems = [
   { to: '/ia', label: 'Análise IA', icon: Sparkles },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, signOut } = useAuth()
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-60 bg-slate-900 border-r border-slate-800 flex flex-col z-40">
+    <aside
+      className={`fixed left-0 top-0 h-full w-60 bg-slate-900 border-r border-slate-800 flex flex-col z-40 transition-transform duration-300 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
       {/* Logo */}
       <div className="p-5 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-violet-600 rounded-xl flex items-center justify-center">
-            <Wallet className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-600 rounded-xl flex items-center justify-center shrink-0">
+              <Wallet className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-100 text-sm">FinanceApp</p>
+              <p className="text-xs text-slate-500">Controle Financeiro</p>
+            </div>
           </div>
-          <div>
-            <p className="font-bold text-slate-100 text-sm">FinanceApp</p>
-            <p className="text-xs text-slate-500">Controle Financeiro</p>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+            aria-label="Fechar menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
+            onClick={() => {
+              if (window.innerWidth < 1024) onClose()
+            }}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
@@ -53,7 +75,7 @@ export function Sidebar() {
               }`
             }
           >
-            <Icon className="w-4.5 h-4.5" />
+            <Icon className="w-4 h-4 shrink-0" />
             {label}
           </NavLink>
         ))}
@@ -62,7 +84,7 @@ export function Sidebar() {
       {/* User */}
       <div className="p-3 border-t border-slate-800">
         <div className="flex items-center gap-3 px-3 py-2 mb-1">
-          <div className="w-8 h-8 bg-violet-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
+          <div className="w-8 h-8 bg-violet-600 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0">
             {user?.email?.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
@@ -76,7 +98,7 @@ export function Sidebar() {
           onClick={signOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-4 h-4 shrink-0" />
           Sair
         </button>
       </div>
