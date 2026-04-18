@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -6,18 +6,17 @@ import {
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, Wallet, Target, ArrowUpRight, ArrowDownRight,
-  CreditCard, Banknote,
 } from 'lucide-react'
 import { Layout } from '../components/layout/Layout'
 import { StatCard, Card } from '../components/ui/Card'
+import { SkeletonCard, SkeletonChart } from '../components/ui/Skeleton'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
   formatCurrency, formatDate, last6MonthsLabels, currentMonthRange,
 } from '../lib/utils'
 import { Transaction, Investment, Goal, isIncome } from '../types'
-
-const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316']
+import { CHART_COLORS } from '../constants/colors'
 
 interface MonthData {
   label: string
@@ -32,14 +31,19 @@ export function Dashboard() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [loading, setLoading] = useState(true)
   const [monthlyData, setMonthlyData] = useState<MonthData[]>([])
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     fetchAll()
+    return () => { abortRef.current?.abort() }
   }, [user])
 
   async function fetchAll() {
     if (!user) return
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
     setLoading(true)
+
     const months = last6MonthsLabels()
     const earliest = months[0].start
 
@@ -74,7 +78,6 @@ export function Dashboard() {
   const totalInvested = investments.reduce((a, i) => a + i.invested_amount, 0)
   const currentInvValue = investments.reduce((a, i) => a + (i.current_value ?? i.invested_amount), 0)
 
-  // Expense by category (current month)
   const expenseByCategory = currentTxs
     .filter((t) => !isIncome(t.type))
     .reduce<Record<string, number>>((acc, t) => {
@@ -91,20 +94,27 @@ export function Dashboard() {
   if (loading) {
     return (
       <Layout title="Dashboard">
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
+          {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <Card className="lg:col-span-2 p-5">
+            <div className="h-4 w-48 bg-slate-700 rounded animate-pulse mb-4" />
+            <SkeletonChart />
+          </Card>
+          <Card className="p-5">
+            <div className="h-4 w-36 bg-slate-700 rounded animate-pulse mb-4" />
+            <SkeletonChart />
+          </Card>
         </div>
       </Layout>
     )
   }
 
   return (
-    <Layout
-      title="Dashboard"
-      subtitle={`Visão geral do mês atual`}
-    >
+    <Layout title="Dashboard" subtitle="Visão geral do mês atual">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-6">
         <StatCard
           title="Saldo do Mês"
           value={formatCurrency(balance)}
@@ -112,13 +122,13 @@ export function Dashboard() {
           iconColor={balance >= 0 ? 'bg-violet-600' : 'bg-red-600'}
         />
         <StatCard
-          title="Receitas do Mês"
+          title="Receitas"
           value={formatCurrency(monthIncome)}
           icon={<TrendingUp className="w-5 h-5 text-white" />}
           iconColor="bg-green-600"
         />
         <StatCard
-          title="Despesas do Mês"
+          title="Despesas"
           value={formatCurrency(monthExpense)}
           icon={<TrendingDown className="w-5 h-5 text-white" />}
           iconColor="bg-red-600"
@@ -133,11 +143,11 @@ export function Dashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 md:mb-6">
         {/* Area Chart */}
-        <Card className="lg:col-span-2 p-5">
+        <Card className="lg:col-span-2 p-4 md:p-5">
           <h3 className="text-sm font-semibold text-slate-300 mb-4">Receitas x Despesas (6 meses)</h3>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={monthlyData}>
               <defs>
                 <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
@@ -150,8 +160,8 @@ export function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+              <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} width={45} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
                 labelStyle={{ color: '#94a3b8' }}
@@ -164,14 +174,14 @@ export function Dashboard() {
         </Card>
 
         {/* Pie Chart */}
-        <Card className="p-5">
+        <Card className="p-4 md:p-5">
           <h3 className="text-sm font-semibold text-slate-300 mb-4">Despesas por Categoria</h3>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="45%" outerRadius={70} dataKey="value">
+                <Pie data={pieData} cx="50%" cy="45%" outerRadius={65} dataKey="value">
                   {pieData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -179,13 +189,13 @@ export function Dashboard() {
                   formatter={(value: number) => formatCurrency(value)}
                 />
                 <Legend
-                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: 11 }}>{value}</span>}
+                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: 10 }}>{value}</span>}
                   iconSize={8}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-52 text-slate-500 text-sm">
+            <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
               Nenhuma despesa este mês
             </div>
           )}
@@ -195,7 +205,7 @@ export function Dashboard() {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Recent Transactions */}
-        <Card className="p-5">
+        <Card className="p-4 md:p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-slate-300">Transações Recentes</h3>
             <Link to="/transacoes" className="text-xs text-violet-400 hover:text-violet-300">Ver todas</Link>
@@ -209,14 +219,13 @@ export function Dashboard() {
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${income ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
                       {income
                         ? <ArrowUpRight className="w-4 h-4 text-green-400" />
-                        : <ArrowDownRight className="w-4 h-4 text-red-400" />
-                      }
+                        : <ArrowDownRight className="w-4 h-4 text-red-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-slate-200 truncate">{tx.description}</p>
                       <p className="text-xs text-slate-500">{tx.category} · {formatDate(tx.date)}</p>
                     </div>
-                    <span className={`text-sm font-semibold ${income ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-sm font-semibold shrink-0 ${income ? 'text-green-400' : 'text-red-400'}`}>
                       {income ? '+' : '-'}{formatCurrency(tx.amount)}
                     </span>
                   </div>
@@ -229,7 +238,7 @@ export function Dashboard() {
         </Card>
 
         {/* Goals */}
-        <Card className="p-5">
+        <Card className="p-4 md:p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-slate-300">Metas Financeiras</h3>
             <Link to="/metas" className="text-xs text-violet-400 hover:text-violet-300">Ver todas</Link>
@@ -241,11 +250,11 @@ export function Dashboard() {
                 return (
                   <div key={goal.id}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <Target className="w-3.5 h-3.5" style={{ color: goal.color }} />
-                        <span className="text-sm text-slate-200">{goal.name}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Target className="w-3.5 h-3.5 shrink-0" style={{ color: goal.color }} />
+                        <span className="text-sm text-slate-200 truncate">{goal.name}</span>
                       </div>
-                      <span className="text-xs text-slate-400">{pct.toFixed(0)}%</span>
+                      <span className="text-xs text-slate-400 shrink-0 ml-2">{pct.toFixed(0)}%</span>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                       <div

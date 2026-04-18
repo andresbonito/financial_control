@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Sparkles, TrendingDown, AlertCircle, CheckCircle2, Lightbulb, RefreshCw } from 'lucide-react'
-import { format } from 'date-fns'
+import { toast } from 'react-hot-toast'
 import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency, last6MonthsLabels } from '../lib/utils'
+import { sanitizeForPrompt, truncatePromptInput } from '../lib/sanitize'
 import { Transaction, isIncome } from '../types'
 
 interface AnalysisResult {
@@ -20,14 +21,14 @@ interface AnalysisResult {
 }
 
 export function AIAnalysis() {
-  const { user } = useAuth()
+  const { user, session } = useAuth()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState('')
   const [selectedMonths, setSelectedMonths] = useState(3)
 
   async function analyze() {
-    if (!user) return
+    if (!user || !session) return
     setLoading(true)
     setError('')
     setResult(null)
@@ -46,62 +47,70 @@ export function AIAnalysis() {
 
     const txs: Transaction[] = transactions || []
 
-    // Build monthly summaries
     const monthlySummaries = months.map(({ label, start, end }) => {
       const monthTxs = txs.filter((t) => t.date >= start && t.date <= end)
       const income = monthTxs.filter((t) => isIncome(t.type)).reduce((a, t) => a + t.amount, 0)
       const expense = monthTxs.filter((t) => !isIncome(t.type)).reduce((a, t) => a + t.amount, 0)
       const byCategory = monthTxs
         .filter((t) => !isIncome(t.type))
-        .reduce<Record<string, number>>((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc }, {})
+        .reduce<Record<string, number>>((acc, t) => {
+          acc[t.category] = (acc[t.category] || 0) + t.amount
+          return acc
+        }, {})
       return { mes: label, receitas: income, despesas: expense, saldo: income - expense, por_categoria: byCategory }
     })
 
-    const prompt = `Você é um consultor financeiro pessoal especializado em análise de gastos e planejamento financeiro para brasileiros.
+    const totalByCategory = txs
+      .filter((t) => !isIncome(t.type))
+      .reduce<Record<string, number>>((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount
+        return acc
+      }, {})
 
-Analise os dados financeiros abaixo dos últimos ${selectedMonths} meses e forneça uma análise detalhada em JSON.
+    // Sanitize all user-supplied string data before sending to the AI
+    const safeSummary = monthlySummaries
+      .map((m) => `- ${sanitizeForPrompt(m.mes)}: Receitas ${formatCurrency(m.receitas)}, Despesas ${formatCurrency(m.despesas)}, Saldo ${formatCurrency(m.saldo)}`)
+      .join('\n')
 
-## Dados Financeiros
+    const safeCategories = Object.entries(totalByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, val]) => `- ${sanitizeForPrompt(cat)}: ${formatCurrency(val)}`)
+      .join('\n') || 'Nenhuma despesa'
 
-### Resumo Mensal:
-${monthlySummaries.map((m) => `- ${m.mes}: Receitas ${formatCurrency(m.receitas)}, Despesas ${formatCurrency(m.despesas)}, Saldo ${formatCurrency(m.saldo)}`).join('\n')}
+    const safeGoals = goals
+      ?.map((g) => `- ${sanitizeForPrompt(truncatePromptInput(g.name, 100))}: ${formatCurrency(g.current_amount)} / ${formatCurrency(g.target_amount)} (${((g.current_amount / g.target_amount) * 100).toFixed(0)}%)`)
+      .join('\n') || 'Nenhuma meta cadastrada'
 
-### Despesas por Categoria (total do período):
-${Object.entries(
-  txs.filter((t) => !isIncome(t.type)).reduce<Record<string, number>>((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc }, {})
-).sort((a, b) => b[1] - a[1]).map(([cat, val]) => `- ${cat}: ${formatCurrency(val)}`).join('\n') || 'Nenhuma despesa'}
+    const prompt = `Analise os dados financeiros abaixo dos últimos ${selectedMonths} meses e forneça uma análise detalhada em JSON.
 
-### Metas Atuais:
-${goals?.map((g) => `- ${g.name}: ${formatCurrency(g.current_amount)} / ${formatCurrency(g.target_amount)} (${((g.current_amount / g.target_amount) * 100).toFixed(0)}%)`).join('\n') || 'Nenhuma meta cadastrada'}
+## Resumo Mensal:
+${safeSummary}
 
-## Instruções
+## Despesas por Categoria (total do período):
+${safeCategories}
 
-Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem explicações fora do JSON):
+## Metas Atuais:
+${safeGoals}
+
+## Formato de resposta
+Responda APENAS com JSON válido (sem markdown, sem texto fora do JSON):
 {
-  "resumo": "parágrafo de 2-3 frases resumindo a situação financeira",
+  "resumo": "parágrafo de 2-3 frases",
   "score": 75,
   "pontos_positivos": ["ponto 1", "ponto 2", "ponto 3"],
   "alertas": ["alerta 1", "alerta 2"],
-  "categorias_para_cortar": [
-    {
-      "categoria": "nome da categoria",
-      "gasto": "R$ valor gasto",
-      "sugestao": "sugestão específica de como reduzir",
-      "economia_potencial": "R$ valor que pode economizar"
-    }
-  ],
-  "recomendacoes": ["recomendação 1", "recomendação 2", "recomendação 3", "recomendação 4"],
-  "meta_sugerida": {
-    "nome": "nome da meta sugerida",
-    "valor": "R$ valor",
-    "prazo": "X meses"
-  }
+  "categorias_para_cortar": [{"categoria":"nome","gasto":"R$ valor","sugestao":"sugestão","economia_potencial":"R$ valor"}],
+  "recomendacoes": ["rec 1", "rec 2", "rec 3", "rec 4"],
+  "meta_sugerida": {"nome":"nome","valor":"R$ valor","prazo":"X meses"}
 }`
 
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ prompt }),
       })
 
@@ -112,8 +121,11 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
 
       const data = await response.json()
       setResult(data.result)
-    } catch (err: any) {
-      setError(err.message || 'Erro inesperado. Verifique a configuração da API.')
+      toast.success('Análise concluída!')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro inesperado.'
+      setError(msg)
+      toast.error('Falha na análise. Verifique a configuração da API.')
     }
 
     setLoading(false)
@@ -129,25 +141,21 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
   return (
     <Layout title="Análise com IA" subtitle="Insights inteligentes sobre seus gastos com Claude AI">
       {/* Config */}
-      <Card className="p-5 mb-6">
+      <Card className="p-4 md:p-5 mb-6">
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="text-xs text-slate-400 block mb-1.5">Período de análise</label>
             <select
               value={selectedMonths}
               onChange={(e) => setSelectedMonths(parseInt(e.target.value))}
-              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500 min-h-[44px]"
             >
               <option value={1}>Último mês</option>
               <option value={3}>Últimos 3 meses</option>
               <option value={6}>Últimos 6 meses</option>
             </select>
           </div>
-          <Button
-            onClick={analyze}
-            loading={loading}
-            icon={<Sparkles className="w-4 h-4" />}
-          >
+          <Button onClick={analyze} loading={loading} icon={<Sparkles className="w-4 h-4" />}>
             {loading ? 'Analisando...' : 'Analisar meus gastos'}
           </Button>
           {result && (
@@ -165,7 +173,10 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
             <div>
               <p className="text-sm font-medium text-red-400">Erro na análise</p>
               <p className="text-sm text-slate-400 mt-1">{error}</p>
-              <p className="text-xs text-slate-500 mt-2">Verifique se a variável <code className="bg-slate-700 px-1 rounded">ANTHROPIC_API_KEY</code> está configurada no Vercel ou no arquivo <code className="bg-slate-700 px-1 rounded">.env</code>.</p>
+              <p className="text-xs text-slate-500 mt-2">
+                Verifique se a variável{' '}
+                <code className="bg-slate-700 px-1 rounded">ANTHROPIC_API_KEY</code> está configurada no Vercel.
+              </p>
             </div>
           </div>
         </Card>
@@ -226,7 +237,6 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
                 ))}
               </ul>
             </Card>
-
             <Card className="p-5 border-amber-500/20">
               <div className="flex items-center gap-2 mb-3">
                 <AlertCircle className="w-4 h-4 text-amber-400" />
@@ -252,17 +262,15 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
               </div>
               <div className="space-y-3">
                 {result.categorias_para_cortar.map((cat, i) => (
-                  <div key={i} className="flex items-start gap-4 p-3 bg-slate-700/40 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-slate-200">{cat.categoria}</span>
-                        <div className="flex gap-3 text-xs">
-                          <span className="text-red-400">Gasto: {cat.gasto}</span>
-                          <span className="text-green-400">Economia: {cat.economia_potencial}</span>
-                        </div>
+                  <div key={i} className="p-3 bg-slate-700/40 rounded-lg">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <span className="text-sm font-medium text-slate-200">{cat.categoria}</span>
+                      <div className="flex gap-3 text-xs">
+                        <span className="text-red-400">Gasto: {cat.gasto}</span>
+                        <span className="text-green-400">Economia: {cat.economia_potencial}</span>
                       </div>
-                      <p className="text-xs text-slate-400">{cat.sugestao}</p>
                     </div>
+                    <p className="text-xs text-slate-400">{cat.sugestao}</p>
                   </div>
                 ))}
               </div>
@@ -297,7 +305,7 @@ Responda APENAS com um JSON válido no seguinte formato (sem markdown, sem expli
                 <div>
                   <p className="text-xs text-violet-400 font-medium mb-1">Meta Sugerida pela IA</p>
                   <p className="text-sm font-semibold text-slate-100">{result.meta_sugerida.nome}</p>
-                  <div className="flex gap-4 mt-1">
+                  <div className="flex flex-wrap gap-4 mt-1">
                     <span className="text-xs text-slate-400">Valor: <span className="text-slate-200">{result.meta_sugerida.valor}</span></span>
                     <span className="text-xs text-slate-400">Prazo: <span className="text-slate-200">{result.meta_sugerida.prazo}</span></span>
                   </div>

@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Transactions } from './pages/Transactions'
@@ -27,12 +29,12 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="/transacoes" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
-      <Route path="/investimentos" element={<ProtectedRoute><Investments /></ProtectedRoute>} />
-      <Route path="/metas" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-      <Route path="/ia" element={<ProtectedRoute><AIAnalysis /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>} />
+      <Route path="/transacoes" element={<ProtectedRoute><ErrorBoundary><Transactions /></ErrorBoundary></ProtectedRoute>} />
+      <Route path="/investimentos" element={<ProtectedRoute><ErrorBoundary><Investments /></ErrorBoundary></ProtectedRoute>} />
+      <Route path="/metas" element={<ProtectedRoute><ErrorBoundary><Goals /></ErrorBoundary></ProtectedRoute>} />
+      <Route path="/relatorios" element={<ProtectedRoute><ErrorBoundary><Reports /></ErrorBoundary></ProtectedRoute>} />
+      <Route path="/ia" element={<ProtectedRoute><ErrorBoundary><AIAnalysis /></ErrorBoundary></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -43,6 +45,25 @@ export function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 3500,
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #334155',
+              borderRadius: '12px',
+              fontSize: '14px',
+            },
+            success: {
+              iconTheme: { primary: '#22c55e', secondary: '#1e293b' },
+            },
+            error: {
+              iconTheme: { primary: '#ef4444', secondary: '#1e293b' },
+            },
+          }}
+        />
       </AuthProvider>
     </BrowserRouter>
   )

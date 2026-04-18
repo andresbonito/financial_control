@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { Plus, Trash2, Edit2, Target, Calendar, TrendingUp } from 'lucide-react'
 import { differenceInDays, parseISO } from 'date-fns'
+import { toast } from 'react-hot-toast'
 import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { SkeletonCard } from '../components/ui/Skeleton'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency } from '../lib/utils'
@@ -34,6 +37,8 @@ export function Goals() {
   const [updateModal, setUpdateModal] = useState<Goal | null>(null)
   const [editing, setEditing] = useState<Goal | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<GoalForm>({
     defaultValues: { color: '#8b5cf6' },
@@ -43,13 +48,18 @@ export function Goals() {
 
   const fetchGoals = useCallback(async () => {
     if (!user) return
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
     setLoading(true)
     const { data } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
     setGoals(data || [])
     setLoading(false)
   }, [user])
 
-  useEffect(() => { fetchGoals() }, [fetchGoals])
+  useEffect(() => {
+    fetchGoals()
+    return () => { abortRef.current?.abort() }
+  }, [fetchGoals])
 
   function openAdd() {
     setEditing(null)
@@ -85,13 +95,13 @@ export function Goals() {
       color: data.color,
     }
 
-    if (editing) {
-      await supabase.from('goals').update(payload).eq('id', editing.id)
-    } else {
-      await supabase.from('goals').insert(payload)
-    }
+    const { error } = editing
+      ? await supabase.from('goals').update(payload).eq('id', editing.id)
+      : await supabase.from('goals').insert(payload)
 
     setSaving(false)
+    if (error) { toast.error('Erro ao salvar meta.'); return }
+    toast.success(editing ? 'Meta atualizada!' : 'Meta criada!')
     setModalOpen(false)
     fetchGoals()
   }
@@ -99,17 +109,22 @@ export function Goals() {
   async function onUpdateProgress(data: UpdateForm) {
     if (!updateModal) return
     setSaving(true)
-    await supabase.from('goals').update({
+    const { error } = await supabase.from('goals').update({
       current_amount: parseFloat(data.current_amount.replace(',', '.')),
     }).eq('id', updateModal.id)
     setSaving(false)
+    if (error) { toast.error('Erro ao atualizar progresso.'); return }
+    toast.success('Progresso atualizado!')
     setUpdateModal(null)
     fetchGoals()
   }
 
-  async function deleteGoal(id: string) {
-    if (!confirm('Excluir esta meta?')) return
-    await supabase.from('goals').delete().eq('id', id)
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const { error } = await supabase.from('goals').delete().eq('id', deleteTarget)
+    setDeleteTarget(null)
+    if (error) { toast.error('Erro ao excluir meta.'); return }
+    toast.success('Meta excluída.')
     fetchGoals()
   }
 
@@ -122,11 +137,16 @@ export function Goals() {
     <Layout
       title="Metas"
       subtitle="Acompanhe seus objetivos financeiros"
-      action={<Button onClick={openAdd} icon={<Plus className="w-4 h-4" />}>Nova meta</Button>}
+      action={
+        <Button onClick={openAdd} icon={<Plus className="w-4 h-4" />} size="sm">
+          <span className="hidden sm:inline">Nova meta</span>
+          <span className="sm:hidden">Nova</span>
+        </Button>
+      }
     >
       {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : goals.length === 0 ? (
         <Card className="p-12 text-center">
@@ -147,7 +167,7 @@ export function Goals() {
               <Card key={goal.id} className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: goal.color + '33' }}>
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: goal.color + '33' }}>
                       <Target className="w-4 h-4" style={{ color: goal.color }} />
                     </div>
                     <div>
@@ -155,11 +175,19 @@ export function Goals() {
                       {goal.category && <p className="text-xs text-slate-500">{goal.category}</p>}
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(goal)} className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-slate-300 transition-colors">
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => openEdit(goal)}
+                      className="p-1.5 hover:bg-slate-700 rounded text-slate-500 hover:text-slate-300 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                      aria-label="Editar"
+                    >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => deleteGoal(goal.id)} className="p-1 hover:bg-red-500/10 rounded text-slate-500 hover:text-red-400 transition-colors">
+                    <button
+                      onClick={() => setDeleteTarget(goal.id)}
+                      className="p-1.5 hover:bg-red-500/10 rounded text-slate-500 hover:text-red-400 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                      aria-label="Excluir"
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -188,7 +216,7 @@ export function Goals() {
                 </div>
 
                 {/* Info */}
-                <div className="flex gap-3 text-xs text-slate-500 mb-4">
+                <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-4">
                   {daysLeft !== null && (
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
@@ -229,37 +257,33 @@ export function Goals() {
             label="Nome da meta"
             placeholder="Ex: Reserva de emergência"
             error={errors.name?.message}
-            {...register('name', { required: 'Obrigatório' })}
+            {...register('name', { required: 'Obrigatório', maxLength: { value: 100, message: 'Máx. 100 caracteres' } })}
           />
-          <Input
-            label="Descrição (opcional)"
-            placeholder="Descreva o objetivo..."
-            {...register('description')}
-          />
+          <Input label="Descrição (opcional)" placeholder="Descreva o objetivo..." {...register('description')} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Valor alvo (R$)"
-              placeholder="0,00"
-              error={errors.target_amount?.message}
-              {...register('target_amount', { required: 'Obrigatório' })}
-            />
-            <Input
-              label="Valor atual (R$)"
-              placeholder="0,00"
-              {...register('current_amount')}
-            />
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Valor alvo (R$)</label>
+              <input
+                inputMode="decimal"
+                placeholder="0,00"
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 min-h-[44px]"
+                {...register('target_amount', { required: 'Obrigatório' })}
+              />
+              {errors.target_amount && <span className="text-xs text-red-400 mt-1 block">{errors.target_amount.message}</span>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Valor atual (R$)</label>
+              <input
+                inputMode="decimal"
+                placeholder="0,00"
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 min-h-[44px]"
+                {...register('current_amount')}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Prazo (opcional)"
-              type="date"
-              {...register('deadline')}
-            />
-            <Input
-              label="Categoria (opcional)"
-              placeholder="Ex: Viagem, Carro..."
-              {...register('category')}
-            />
+            <Input label="Prazo (opcional)" type="date" {...register('deadline')} />
+            <Input label="Categoria (opcional)" placeholder="Ex: Viagem, Carro..." {...register('category')} />
           </div>
           {/* Color picker */}
           <div>
@@ -269,11 +293,11 @@ export function Goals() {
                 <label key={c} className="cursor-pointer">
                   <input type="radio" value={c} className="sr-only" {...register('color')} />
                   <div
-                    className="w-7 h-7 rounded-full transition-transform"
+                    className="w-8 h-8 rounded-full transition-transform touch-manipulation"
                     style={{
                       backgroundColor: c,
                       transform: watchColor === c ? 'scale(1.25)' : 'scale(1)',
-                      outline: watchColor === c ? `2px solid white` : 'none',
+                      outline: watchColor === c ? '2px solid white' : 'none',
                       outlineOffset: 2,
                     }}
                   />
@@ -294,11 +318,15 @@ export function Goals() {
           <form onSubmit={updateForm.handleSubmit(onUpdateProgress)} className="space-y-4">
             <p className="text-sm text-slate-400">Meta: <span className="text-slate-200 font-medium">{updateModal.name}</span></p>
             <p className="text-sm text-slate-400">Alvo: <span className="text-slate-200">{formatCurrency(updateModal.target_amount)}</span></p>
-            <Input
-              label="Valor atual (R$)"
-              placeholder="0,00"
-              {...updateForm.register('current_amount', { required: 'Obrigatório' })}
-            />
+            <div>
+              <label className="text-sm font-medium text-slate-300 block mb-1">Valor atual (R$)</label>
+              <input
+                inputMode="decimal"
+                placeholder="0,00"
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 min-h-[44px]"
+                {...updateForm.register('current_amount', { required: 'Obrigatório' })}
+              />
+            </div>
             <div className="flex gap-3">
               <Button type="button" variant="secondary" className="flex-1" onClick={() => setUpdateModal(null)}>Cancelar</Button>
               <Button type="submit" className="flex-1" loading={saving}>Atualizar</Button>
@@ -306,6 +334,14 @@ export function Goals() {
           </form>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Excluir meta"
+        message="Esta ação não pode ser desfeita."
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </Layout>
   )
 }
