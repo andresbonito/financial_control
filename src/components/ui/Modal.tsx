@@ -34,13 +34,13 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
 
       {/* Panel — bottom sheet on mobile, centered card on sm+ */}
       <div
-        className={`relative w-full ${widths[size]} bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col`}
+        className={`relative w-full ${widths[size]} bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85svh] sm:max-h-[90vh] flex flex-col`}
       >
         {/* Mobile drag handle */}
         <div className="sm:hidden absolute top-3 left-1/2 -translate-x-1/2 w-10 h-1 bg-slate-600 rounded-full" />
 
-        <div className="flex items-center justify-between px-5 pt-6 sm:pt-5 pb-4 border-b border-slate-700 shrink-0">
-          <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+        <div className="flex items-center justify-between px-4 sm:px-5 pt-6 sm:pt-5 pb-4 border-b border-slate-700 shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-100">{title}</h2>
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
@@ -50,7 +50,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           </button>
         </div>
 
-        <div className="p-5 overflow-y-auto">{children}</div>
+        <div className="p-4 sm:p-5 overflow-y-auto overscroll-contain">{children}</div>
       </div>
     </div>
   )

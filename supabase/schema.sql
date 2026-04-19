@@ -32,15 +32,17 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- Transactions
+-- Todos os campos sensíveis são armazenados criptografados (AES-256-GCM, client-side).
+-- amount e date são TEXT porque armazenam strings criptografadas.
 create table public.transactions (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
-  type text not null check (type in ('pix_in', 'pix_out', 'salary', 'allowance', 'expense', 'income')),
-  amount decimal(12,2) not null check (amount > 0),
+  type text not null,
+  amount text not null,
   description text not null,
   category text not null,
-  payment_method text check (payment_method in ('pix', 'debit', 'credit', 'cash')),
-  date date not null,
+  payment_method text,
+  date text not null,
   notes text,
   created_at timestamp with time zone default timezone('utc', now()) not null
 );
@@ -51,8 +53,8 @@ create policy "Users can insert own transactions" on public.transactions for ins
 create policy "Users can update own transactions" on public.transactions for update using (auth.uid() = user_id);
 create policy "Users can delete own transactions" on public.transactions for delete using (auth.uid() = user_id);
 
--- Index para consultas por data
-create index transactions_user_date_idx on public.transactions (user_id, date desc);
+-- Index por created_at (date é criptografado, não utilizável para ordenação no servidor)
+create index transactions_user_created_idx on public.transactions (user_id, created_at desc);
 
 -- Investments
 create table public.investments (

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,6 +11,8 @@ import { Layout } from '../components/layout/Layout'
 import { StatCard, Card } from '../components/ui/Card'
 import { SkeletonCard, SkeletonChart } from '../components/ui/Skeleton'
 import { supabase } from '../lib/supabase'
+import { generateUserKey, safeDecrypt } from '../lib/encryption'
+import type { TransactionType, PaymentMethod } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import {
   formatCurrency, formatDate, last6MonthsLabels, currentMonthRange,
@@ -26,6 +28,7 @@ interface MonthData {
 
 export function Dashboard() {
   const { user } = useAuth()
+  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [investments, setInvestments] = useState<Investment[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
@@ -34,26 +37,38 @@ export function Dashboard() {
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    fetchAll()
-    return () => { abortRef.current?.abort() }
+    if (!user) { setCryptoKey(null); return }
+    generateUserKey(user.id, 'financeapp-v1').then(setCryptoKey)
   }, [user])
 
-  async function fetchAll() {
-    if (!user) return
+  const fetchAll = useCallback(async () => {
+    if (!user || !cryptoKey) return
     abortRef.current?.abort()
     abortRef.current = new AbortController()
     setLoading(true)
 
     const months = last6MonthsLabels()
-    const earliest = months[0].start
 
     const [txRes, invRes, goalRes] = await Promise.all([
-      supabase.from('transactions').select('*').eq('user_id', user.id).gte('date', earliest).order('date', { ascending: false }),
+      // Date is encrypted — fetch all and filter client-side after decryption
+      supabase.from('transactions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('investments').select('*').eq('user_id', user.id),
       supabase.from('goals').select('*').eq('user_id', user.id),
     ])
 
-    const txs: Transaction[] = txRes.data || []
+    const rawTxs: Transaction[] = txRes.data || []
+    const txs = await Promise.all(rawTxs.map(async (tx) => ({
+      ...tx,
+      type: ((await safeDecrypt(tx.type, cryptoKey)) ?? tx.type) as TransactionType,
+      amount: parseFloat((await safeDecrypt(String(tx.amount), cryptoKey)) ?? String(tx.amount)),
+      description: (await safeDecrypt(tx.description, cryptoKey)) ?? tx.description,
+      category: (await safeDecrypt(tx.category, cryptoKey)) ?? tx.category,
+      payment_method: tx.payment_method
+        ? ((await safeDecrypt(tx.payment_method, cryptoKey)) as PaymentMethod)
+        : null,
+      date: (await safeDecrypt(tx.date, cryptoKey)) ?? tx.date,
+      notes: await safeDecrypt(tx.notes, cryptoKey),
+    })))
     setTransactions(txs)
     setInvestments(invRes.data || [])
     setGoals(goalRes.data || [])
@@ -68,7 +83,12 @@ export function Dashboard() {
     })
     setMonthlyData(md)
     setLoading(false)
-  }
+  }, [user, cryptoKey])
+
+  useEffect(() => {
+    fetchAll()
+    return () => { abortRef.current?.abort() }
+  }, [fetchAll])
 
   const { start, end } = currentMonthRange()
   const currentTxs = transactions.filter((t) => t.date >= start && t.date <= end)

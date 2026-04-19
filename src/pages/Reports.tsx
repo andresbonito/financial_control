@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { FileText, Download, Loader2 } from 'lucide-react'
@@ -7,6 +7,8 @@ import { Layout } from '../components/layout/Layout'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { supabase } from '../lib/supabase'
+import { generateUserKey, safeDecrypt } from '../lib/encryption'
+import type { TransactionType, PaymentMethod } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency, monthRange } from '../lib/utils'
 import { Transaction, Investment, Goal, isIncome } from '../types'
@@ -16,6 +18,7 @@ const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899'
 export function Reports() {
   const { user } = useAuth()
   const now = new Date()
+  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null)
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [loading, setLoading] = useState(false)
@@ -25,19 +28,41 @@ export function Reports() {
     goals: Goal[]
   } | null>(null)
 
+  useEffect(() => {
+    if (!user) { setCryptoKey(null); return }
+    generateUserKey(user.id, 'financeapp-v1').then(setCryptoKey)
+  }, [user])
+
   async function loadPreview() {
-    if (!user) return
+    if (!user || !cryptoKey) return
     setLoading(true)
     const { start, end } = monthRange(year, month)
 
     const [txRes, invRes, goalRes] = await Promise.all([
-      supabase.from('transactions').select('*').eq('user_id', user.id).gte('date', start).lte('date', end).order('date', { ascending: false }),
+      // Date is encrypted — fetch all and filter client-side after decryption
+      supabase.from('transactions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('investments').select('*').eq('user_id', user.id),
       supabase.from('goals').select('*').eq('user_id', user.id),
     ])
 
+    const rawTxs: Transaction[] = txRes.data || []
+    const decryptedTxs = await Promise.all(rawTxs.map(async (tx) => ({
+      ...tx,
+      type: ((await safeDecrypt(tx.type, cryptoKey)) ?? tx.type) as TransactionType,
+      amount: parseFloat((await safeDecrypt(String(tx.amount), cryptoKey)) ?? String(tx.amount)),
+      description: (await safeDecrypt(tx.description, cryptoKey)) ?? tx.description,
+      category: (await safeDecrypt(tx.category, cryptoKey)) ?? tx.category,
+      payment_method: tx.payment_method
+        ? ((await safeDecrypt(tx.payment_method, cryptoKey)) as PaymentMethod)
+        : null,
+      date: (await safeDecrypt(tx.date, cryptoKey)) ?? tx.date,
+      notes: await safeDecrypt(tx.notes, cryptoKey),
+    })))
+
+    const filteredTxs = decryptedTxs.filter((tx) => tx.date >= start && tx.date <= end)
+
     setPreviewData({
-      transactions: txRes.data || [],
+      transactions: filteredTxs,
       investments: invRes.data || [],
       goals: goalRes.data || [],
     })

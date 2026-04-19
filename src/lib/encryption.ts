@@ -61,3 +61,15 @@ export async function decryptData(cipher: string, key: CryptoKey): Promise<strin
   )
   return dec.decode(plain)
 }
+
+// Returns true if the string looks like an AES-GCM encrypted value ("24hexIV:cipherHex")
+export function isEncryptedFormat(value: string): boolean {
+  return /^[0-9a-f]{24}:[0-9a-f]+$/.test(value)
+}
+
+// Decrypts if the value is in encrypted format; returns the original string otherwise (handles legacy plaintext)
+export async function safeDecrypt(value: string | null | undefined, key: CryptoKey): Promise<string | null> {
+  if (!value) return value ?? null
+  if (!isEncryptedFormat(value)) return value
+  try { return await decryptData(value, key) } catch { return value }
+}

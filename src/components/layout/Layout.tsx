@@ -27,7 +27,7 @@ export function Layout({ children, title, subtitle, action }: LayoutProps) {
       )}
 
       <main
-        className={`flex-1 min-w-0 px-4 pt-4 pb-24 sm:px-6 sm:pt-6 sm:pb-6 lg:pb-6 transition-all duration-300 ${
+        className={`flex-1 min-w-0 overflow-x-hidden px-4 pt-4 pb-28 sm:px-6 sm:pt-6 sm:pb-6 lg:pb-6 transition-all duration-300 ${
           sidebarOpen ? 'lg:ml-60' : 'lg:ml-0'
         }`}
       >

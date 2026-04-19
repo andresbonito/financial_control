@@ -18,7 +18,8 @@ export function PeriodSelector({
     const d = new Date()
     d.setMonth(d.getMonth() - i)
     const val = format(d, 'yyyy-MM')
-    const label = format(d, 'MMMM yyyy', { locale: ptBR })
+    // Short label fits better on mobile: "Abr/26"
+    const label = format(d, 'MMM/yy', { locale: ptBR })
     return { value: val, label: label.charAt(0).toUpperCase() + label.slice(1) }
   })
 

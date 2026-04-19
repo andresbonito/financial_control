@@ -7,9 +7,16 @@
     box-sizing: border-box;
   }
 
+  html {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-slate-900 text-slate-100 antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   ::-webkit-scrollbar {
